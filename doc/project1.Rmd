@@ -1,0 +1,39 @@
+---
+title: "Applied Data Science Project 1"
+author: "Hui Chiang Tay ht2490"
+date: "28/01/2019"
+output: html_document
+---
+
+```{r echo = FALSE, results= 'hide', warning = FALSE}
+library(readr)
+library(dplyr)
+library(ggplot2)
+library(magrittr)
+library(tidyr)
+library(tm)
+library(SnowballC)
+library(wordcloud)
+library(RColorBrewer)
+library(ngram)
+library(qdap)
+library(reshape2)
+library(ggpubr)
+```
+
+
+```{r}
+demographic <- "https://raw.githubusercontent.com/rit-public/HappyDB/master/happydb/data/demographic.csv"
+clean_hm <- "/Users/tayhuichiang94/Desktop/columbia stuff/applied data science/project1/Spring2019-Proj1-huichiang/output/processed_moments.csv"
+sense_label <- "https://raw.githubusercontent.com/rit-public/HappyDB/master/happydb/data/senselabel.csv"
+vad <- "https://raw.githubusercontent.com/rit-public/HappyDB/master/happydb/data/vad.csv"
+
+demo <- read_csv(demographic)
+clean<- read_csv(clean_hm)
+sense <- read_csv(sense_label)
+vad1 <- read_csv(vad)
+demo_df <- as.data.frame(demo)
+clean_df <- as.data.frame(clean)
+sense_df <- as.data.frame(sense)
+vad_df <- as.data.frame(vad1)
+```
