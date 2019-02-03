@@ -5,7 +5,7 @@ date: "28/01/2019"
 output: html_document
 ---
 
-```{r echo = FALSE, results= 'hide', warning = FALSE}
+```{r echo = FALSE, results= 'hide', warning = FALSE, message=FALSE, echo=FALSE}
 library(readr)
 library(dplyr)
 library(ggplot2)
@@ -13,18 +13,20 @@ library(magrittr)
 library(tidyr)
 library(tm)
 library(SnowballC)
-library(wordcloud)
+library(wordcloud2)
 library(RColorBrewer)
 library(ngram)
 library(qdap)
 library(reshape2)
 library(ggpubr)
+library(sqldf)
+library(plotly)
 ```
 
-
-```{r}
+We first import the data as data frames. We will be making use of the demographics data, processed moments csv, and the VAD emotional model data. We will combine these 3 data frames for convenience.
+```{r echo = FALSE, results= 'hide', warning = FALSE, message=FALSE, echo=FALSE}
 demographic <- "https://raw.githubusercontent.com/rit-public/HappyDB/master/happydb/data/demographic.csv"
-clean_hm <- "/Users/tayhuichiang94/Desktop/columbia stuff/applied data science/project1/Spring2019-Proj1-huichiang/output/processed_moments.csv"
+clean_hm <- "../output/processed_moments.csv"
 sense_label <- "https://raw.githubusercontent.com/rit-public/HappyDB/master/happydb/data/senselabel.csv"
 vad <- "https://raw.githubusercontent.com/rit-public/HappyDB/master/happydb/data/vad.csv"
 
@@ -32,8 +34,73 @@ demo <- read_csv(demographic)
 clean<- read_csv(clean_hm)
 sense <- read_csv(sense_label)
 vad1 <- read_csv(vad)
+
 demo_df <- as.data.frame(demo)
 clean_df <- as.data.frame(clean)
 sense_df <- as.data.frame(sense)
 vad_df <- as.data.frame(vad1)
+
+main_df <- sqldf("SELECT *
+                 FROM clean_df
+                 JOIN demo_df 
+                USING(wid)")
+main_df <- sqldf("SELECT *
+                 FROM main_df
+                 JOIN vad_df
+                 USING(hmid)")
 ```
+
+We realise that the majority of the columns in our data are character columns. For analysis, it would be more convenient to change these to either factor or numeric columns. We also note that the vast majority of 'country' is either USA or India. We group the rest of the countries as 'Others'
+```{r, warning=FALSE}
+main_df$reflection_period <- as.factor(main_df$reflection_period)
+main_df$modified <- as.logical(main_df$modified)
+main_df$predicted_category <- as.factor(main_df$predicted_category)
+main_df$age <- as.numeric(main_df$age)
+
+main_df$country[!(main_df$country %in% c("USA", "IND"))] <- 'Others'
+main_df$country <- as.factor(main_df$country)
+
+main_df$gender <- as.factor(main_df$gender)
+main_df$marital <- as.factor(main_df$marital)
+main_df$parenthood <- as.factor(main_df$parenthood)
+```
+
+Now, we plot a few graphs to get a sense of our data. We first start with the VAD values, where based on some background research, we know that valency refers to the pleasure-displeasure dimension, arousal refers to the active-passive dimension, and dominance refers to the dimension of control (Mohammad, 2018). We see that only Dominance and Valency exhibits a clear positive correlation.
+```{r}
+par(mfrow=c(2,2))
+plot(x=main_df$dominance, y=main_df$valency, 
+     main='Valency vs Dominance', xlab='Dominance', ylab='Valency', col='cornflowerblue')
+plot(x=main_df$dominance, y=main_df$arousal,
+     main='Arousal vs Dominance', xlab='Dominance', ylab='Arousal', col='aquamarine3')
+plot(x=main_df$valency, y=main_df$arousal,
+     main='Arousal vs Valency', xlab='Valency', ylab='Arousal', col='darkseagreen3')
+```
+
+We take a look at the 30 most frequently used words, and find that the large majority are words involving family and friends, such as 'friend', 'son',' family' and 'daughter'. We also note that 'day' and 'time' are very frequently used, which makes sense considering we use these words to indicate the specific moment in which the happy moment occurred.
+```{r, warning=FALSE}
+wordcloud(paste(main_df$text), max.words=30, min.freq=1000)
+```
+
+Next, we take a look at the predicted categories and reflection period of each recorded happy moment. It seems that the most frequent categories of the happy moments are 'achievement' and 'affection', which does correspond to the family-related words we observed earlier. The least frequent categories are 'exercise' and 'nature'. With respect to the reflection period, it seems that the a slightly greater proportion of 'achievement' and 'affection' is over a 3 month period, while a slightly greater proportion of the other categories is over a 24 hour period.
+```{r, fig.width=5, fig.height=3}
+counts <- table(main_df$reflection_period, main_df$predicted_category)
+barplot(counts, main="Happy Moments by Category and Reflection Period",
+  xlab="Category", col=c("cornflowerblue","palevioletred"),
+  legend = rownames(counts))
+```
+
+Lastly, we will look at the demographics of our data. We see that a greater proportion of married and divorced individuals have children, while the vast majority of single individuals do not have children, as we expect. As for the age groups of individuals, most are between 22 and 40 years old, with the ages of men being spread out over a larger range than that of women.
+```{r, fig.height=5, warning=FALSE}
+par(mfrow=c(2,1))
+counts <- table(main_df$parenthood, main_df$marital)
+barplot(counts, main="Happy Moments by Marital Status and Parenthood",
+  xlab="Marital", col=c("cornflowerblue","palevioletred"),
+  legend = rownames(counts))
+counts <- table(main_df$gender, main_df$age, exclude='o')
+barplot(counts, main="Happy Moments by Age and Gender",
+  xlab="Age", col=c("cornflowerblue","palevioletred"),
+  legend = rownames(counts))
+```
+
+#References
+Mohammad, S.M. (2018, August). *The NRC Valence, Arousal, and Dominance Lexicon*. Retrieved from https://saifmohammad.com/WebPages/nrc-vad.html.
