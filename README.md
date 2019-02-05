@@ -5,14 +5,16 @@
 ![image](figs/title.jpeg)
 
 ### [Project Description](doc/Proj1_desc.md)
-This is the first and only *individual* (as opposed to *team*) this semester. 
+This is the first and only *individual* (as opposed to *team*) this semester.
 
 Term: Spring 2019
 
-+ Projec title: Lorem ipsum dolor sit amet
-+ This project is conducted by [your name]
++ Project title: Project 1
++ This project is conducted by Hui Chiang Tay, UNI: ht2490
 
-+ Project summary: [a short summary] Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat. Duis aute irure dolor in reprehenderit in voluptate velit esse cillum dolore eu fugiat nulla pariatur. Excepteur sint occaecat cupidatat non proident, sunt in culpa qui officia deserunt mollit anim id est laborum.
++ Project summary: In this project, we look at the Happy DB data set. We would like to see if we can draw any insights or make any inferences and predictions on the way people express their happiness, and the sources of their happiness based on their background.
+
++ All required files are found within the doc folder. To generate the report from the Rmd file, First, knit the Text_Processing.Rmd file to generate the processed_moments.csv file found in the output folder. Then, knit the project1.Rmd file to generate the html notebook. Either way, these generated files are already present in the doc file for immediate viewing.
 
 Following [suggestions](http://nicercode.github.io/blog/2013-04-05-projects/) by [RICH FITZJOHN](http://nicercode.github.io/about/#Team) (@richfitz). This folder is orgarnized as follows.
 
