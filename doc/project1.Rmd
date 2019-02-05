@@ -2,7 +2,10 @@
 title: "Applied Data Science Project 1"
 author: "Hui Chiang Tay ht2490"
 date: "28/01/2019"
-output: html_document
+output: 
+  html_document: default
+  html_notebook: default
+  pdf_document: default
 ---
 
 ```{r echo = FALSE, results= 'hide', warning = FALSE, message=FALSE, echo=FALSE}
@@ -13,7 +16,7 @@ library(magrittr)
 library(tidyr)
 library(tm)
 library(SnowballC)
-library(wordcloud2)
+library(wordcloud)
 library(RColorBrewer)
 library(ngram)
 library(qdap)
@@ -21,6 +24,9 @@ library(reshape2)
 library(ggpubr)
 library(sqldf)
 library(plotly)
+library(randomForest)
+library(e1071)
+library(tidytext)
 ```
 
 We first import the data as data frames. We will be making use of the demographics data, processed moments csv, and the VAD emotional model data. We will combine these 3 data frames for convenience.
@@ -50,7 +56,7 @@ main_df <- sqldf("SELECT *
                  USING(hmid)")
 ```
 
-We realise that the majority of the columns in our data are character columns. For analysis, it would be more convenient to change these to either factor or numeric columns. We also note that the vast majority of 'country' is either USA or India. We group the rest of the countries as 'Others'
+We realise that the majority of the columns in our data are character columns. For analysis, it would be more convenient to change these to either factor or numeric columns. We also note that the vast majority of 'country' is either USA or India. We group the rest of the countries as 'Others'. Some of the 'age' values are greater than 200, and this is likely due to a mistake in the collection of data and so we will remove these entries. We also remove 'age' values less than 10 because again, it is unlikely that the workers surveyed would be of such a young age. Lastly, we remove any 'NA' entries for parenthood, gender, marital, or the VAD factors.
 ```{r, warning=FALSE}
 main_df$reflection_period <- as.factor(main_df$reflection_period)
 main_df$modified <- as.logical(main_df$modified)
@@ -63,6 +69,15 @@ main_df$country <- as.factor(main_df$country)
 main_df$gender <- as.factor(main_df$gender)
 main_df$marital <- as.factor(main_df$marital)
 main_df$parenthood <- as.factor(main_df$parenthood)
+
+main_df <- main_df[!is.na(main_df$parenthood), ]
+main_df <- main_df[!is.na(main_df$gender), ]
+main_df <- main_df[!is.na(main_df$marital), ]
+main_df <- main_df[!is.na(main_df$age), ]
+main_df <- main_df[!is.na(main_df$valency), ]
+main_df <- main_df[!is.na(main_df$arousal), ]
+main_df <- main_df[!is.na(main_df$dominance), ]
+main_df <- main_df[(main_df$age<200)&(main_df$age>10), ]
 ```
 
 Now, we plot a few graphs to get a sense of our data. We first start with the VAD values, where based on some background research, we know that valency refers to the pleasure-displeasure dimension, arousal refers to the active-passive dimension, and dominance refers to the dimension of control (Mohammad, 2018). We see that only Dominance and Valency exhibits a clear positive correlation.
@@ -82,24 +97,197 @@ wordcloud(paste(main_df$text), max.words=30, min.freq=1000)
 ```
 
 Next, we take a look at the predicted categories and reflection period of each recorded happy moment. It seems that the most frequent categories of the happy moments are 'achievement' and 'affection', which does correspond to the family-related words we observed earlier. The least frequent categories are 'exercise' and 'nature'. With respect to the reflection period, it seems that the a slightly greater proportion of 'achievement' and 'affection' is over a 3 month period, while a slightly greater proportion of the other categories is over a 24 hour period.
-```{r, fig.width=5, fig.height=3}
+```{r,echo=FALSE, fig.height=6, fig.width=10}
 counts <- table(main_df$reflection_period, main_df$predicted_category)
 barplot(counts, main="Happy Moments by Category and Reflection Period",
-  xlab="Category", col=c("cornflowerblue","palevioletred"),
+  col=c("cornflowerblue","palevioletred"), xlab='Category', space=c(0.05),
   legend = rownames(counts))
 ```
 
 Lastly, we will look at the demographics of our data. We see that a greater proportion of married and divorced individuals have children, while the vast majority of single individuals do not have children, as we expect. As for the age groups of individuals, most are between 22 and 40 years old, with the ages of men being spread out over a larger range than that of women.
-```{r, fig.height=5, warning=FALSE}
-par(mfrow=c(2,1))
+```{r, warning=FALSE}
 counts <- table(main_df$parenthood, main_df$marital)
-barplot(counts, main="Happy Moments by Marital Status and Parenthood",
+barplot(counts, main="Marital Status and Parenthood",
   xlab="Marital", col=c("cornflowerblue","palevioletred"),
   legend = rownames(counts))
+```
+
+```{r, warning=FALSE, echo=FALSE}
 counts <- table(main_df$gender, main_df$age, exclude='o')
-barplot(counts, main="Happy Moments by Age and Gender",
+barplot(counts, main="Age and Gender",
   xlab="Age", col=c("cornflowerblue","palevioletred"),
   legend = rownames(counts))
+```
+
+Now that we have taken a look at some of the features of the data, we would like to investigate a few hypotheses about happiness based on the HappyDB data. 
+
+Firstly, we wish to find out if there is any correlation between the profile of each individual, and the intensity of the happiness they express. We theorise that older males exhibit less Dominance and Arousal than younger females. We do not investigate Valency here because all the happy moments will express a higher Valency anyway since happiness is almost equivalent to pleasure.
+
+Secondly, we also wish to find out if we can predict the category of the happy moment
+given the profile of the individual. For example, perhaps a younger individual would be more likely to express 'achievement', while an older individual would be more likely to express 'affection' or 'bonding'.
+
+#Intensity of Happiness
+We first check our hypothesis graphically by plotting both Dominance and Arousal against age and gender.
+```{r}
+ggplot(main_df, aes(x=age, y=dominance, color=gender)) + geom_point() + labs(x='Age', y='Dominance', colour='Gender', title='Plot of Dominance against Age and Gender')
+```
+
+```{r}
+ggplot(main_df, aes(x=age, y=arousal, color=gender)) + geom_point() + labs(x='Age', y='Arousal', colour='Gender', title='Plot of Arousal against Age and Gender')
+```
+
+Unfortunately, from our observation it seems that there is no clear correlation between these factors. Nevertheless, we press on with our investigation, and check perhaps whether the other factors such as country and reflection period might be more useful. We do this by using a linear regression model. 
+
+```{r}
+dominance_lm <- lm(dominance~reflection_period+age+country+gender+marital+parenthood, data=main_df)
+summary(dominance_lm)
+```
+
+We focus on the factors above that have a p-value of smaller than 0.05. The intercept term reflects the average effect of a female individual from IND, with reflection period being 24 hours, marital status divorced, and no children. We see that on average, the longer reflection period of 3 months, being from the USA or another country, being a male, and being a parent are all associated with a lower Dominance. Age is also a significant variable, however it's effect seems to be quite minute. This validates our initial hypothesis that an older male on average would exhibit less Dominance than a younger female. We now run the same analysis for Arousal.
+
+```{r}
+arousal_lm <- lm(arousal~reflection_period+age+country+gender+marital+parenthood, data=main_df)
+summary(arousal_lm)
+```
+
+Again, focusing on the factors with p-value less than 0.05, we see that there are some differences between the factors correlated with Dominance and Arousal. We see that a longer reflection period of 3 months and the presence of children are now positively correlated with Arousal, while being from the USA or any other country is negatively correlated with both Dominance and Arousal. Also, we see that gender is no longer a significant factor. 
+
+From this simple analysis, we can see that the profile of an individual does play a role in the way and intensity they express their happiness. However, we also note the limitations of this approach. The factors may seem to be correlated, but we cannot say one directly causes another. Indeed, further study is warranted in investigating how demographics may play a role in the emotional psychology of an individual, in order to explain some of the results here.
+
+#Predicted Category
+Before we begin attempting to classify the predicted categories of the happy moment, let us first do some exploratory data analysis again. We use 100% bar plots for each variable (gender, marital etc) to compare the proportions of each category within each variable. For marital status, we only visualise the 'single' and 'married' factors because the others have a very small sample. 
+
+We see that with each variable, the most obvious differences come from the difference in proportion of the 2 dominant categories, 'affection' and 'achievement'. For example, married people and parents have a higher proportion of 'affection' than singles and non-parents. Of the smaller categories, it is interesting to note that singles, non-parents and males also have a higher proportion of 'leisure' than married people, parents and females, while people from the USA have a higher proportion of 'nature' than people from other countries. 
+```{r, warning=FALSE, echo=FALSE, fig.width=14, fig.height=10}
+category_palette <- c("cornflowerblue","palevioletred","aquamarine4","mediumorchid3","seagreen3","goldenrod3","turquoise3")
+par(mfrow=c(2,2))
+
+#Single or married bar plot
+single_or_married <- main_df[(main_df$marital=='single'|main_df$marital== 'married'),]
+counts <- prop.table(table(single_or_married$predicted_category,droplevels(single_or_married)$marital),2)
+barplot(counts, main="Happy Moments by Category and Marital Status",
+  xlab="Category", 
+  col = category_palette,
+  legend = rownames(counts))
+
+#Parenthood bar plot
+counts <- prop.table(table(main_df$predicted_category, main_df$parenthood),2)
+barplot(counts, main="Happy Moments by Category and Parenthood",
+  xlab="Category", col=category_palette,
+  legend = rownames(counts))
+
+#Gender bar plot
+counts <- prop.table(table(main_df$predicted_category, main_df$gender),2)
+barplot(counts, main="Happy Moments by Category and Gender",
+  xlab="Category", col=category_palette,
+  legend = rownames(counts))
+
+#Country bar plot
+counts <- prop.table(table(main_df$predicted_category, main_df$country),2)
+barplot(counts, main="Happy Moments by Category and Country",
+  xlab="Category", col=category_palette,
+  legend = rownames(counts))
+```
+
+Now, we attempt to train a naive Bayes classifier to see whether it is possible to classify the happy moment based on the profile of the individual. We chose the naive Bayes classifier because other classifiers, such as random forests or neural networks take too long to train given the amount of data we have. 
+
+```{r}
+set.seed(1)
+#Subset relevant variables
+classify_df <- main_df[,c('reflection_period','predicted_category','age','country','gender','marital','parenthood')]
+
+#Split into train and test data
+n = nrow(classify_df)
+index = sample(1:n, size = round(0.7*n), replace=FALSE)
+train_df = classify_df[index ,]
+test_df = classify_df[-index ,]
+
+#Train and test classifier
+#model <- randomForest(formula=predicted_category~., data=train_df, ntree=500)
+#pred <- predict(model,test_df)
+#table(pred, test_df$predicted_category)
+
+#Undersample train data
+affection_ind <- which(train_df$predicted_category == "affection")
+achievement_ind <- which(train_df$predicted_category == "achievement")
+
+undersample <- min(0.5*length(affection_ind), 0.5*length(achievement_ind))
+
+pick_affection <- sample(affection_ind, undersample)
+pick_achievement <- sample(achievement_ind, undersample)
+train2_df <- train_df[-c(pick_affection, pick_achievement),]
+
+#Retrain classifier
+#model <- randomForest(formula=predicted_category~., data=train2_df, ntree=500)
+#pred <- predict(model,test_df)
+#table(pred, test_df$predicted_category)
+```
+
+It seems it is after all quite difficult to predict what moment an individual would express happiness about given his profile. Lastly, we would like to see if there are any differences between males and females, singles and married people, and young and old (below or above the median, 30), in terms of the words they use to describe their happiness.
+
+#Final Exploration
+
+##Males and Females
+```{r, echo=FALSE}
+main2 <- unnest_tokens(main_df, word, text)
+gender_df <- group_by(main2, gender)
+gender_df <- count(gender_df, word, sort=TRUE)
+gender_df <- slice(gender_df, 1:20)
+
+#Gender bar plot
+barplot(gender_df[gender_df$gender=='m',]$n, 
+        main="Most frequently used words by males",
+        col = 'cornflowerblue', las=2, space=0.1,
+        names.arg=gender_df[gender_df$gender=='m',]$word)
+```
+
+```{r, echo=FALSE}
+barplot(gender_df[gender_df$gender=='f',]$n, 
+        main="Most frequently used words by females",
+        col = 'palevioletred', las=2, space=0.1,
+        names.arg=gender_df[gender_df$gender=='f',]$word)
+```
+
+##Singles and Married Couples
+```{r, echo=FALSE}
+marital_df <- group_by(main2, marital)
+marital_df <- count(marital_df, word, sort=TRUE)
+marital_df <- slice(marital_df, 1:20)
+
+#Gender bar plot
+barplot(marital_df[marital_df$marital=='single',]$n, 
+        main="Most frequently used words by singles",
+        las=2, space=0.1, col = 'cornflowerblue',
+        names.arg=marital_df[marital_df$marital=='single',]$word)
+```
+
+```{r, echo=FALSE}
+barplot(marital_df[marital_df$marital=='married',]$n, 
+        main="Most frequently used words by married people",
+        las=2, space=0.1, col = 'palevioletred',
+        names.arg=marital_df[marital_df$marital=='married',]$word)
+```
+
+##Young and Old
+```{r, echo=FALSE}
+age_df <- main2
+age_df$age <- cut(main2$age, breaks = c(0,30,100), labels=c('young','old')) 
+age_df <- group_by(age_df, age)
+age_df <- count(age_df, word, sort=TRUE)
+age_df <- slice(age_df, 1:20)
+
+#Age bar plot
+barplot(age_df[age_df$age == 'young',]$n, 
+        main="Most frequently used words by young people",
+        las=2, space=0.1, col = 'cornflowerblue',
+        names.arg=age_df[age_df$age=='young',]$word)
+```
+
+```{r, echo=FALSE}
+barplot(age_df[age_df$age == 'old',]$n, 
+        main="Most frequently used words by old people",
+        las=2, space=0.1, col = 'palevioletred',
+        names.arg=age_df[age_df$age=='old',]$word)
 ```
 
 #References
